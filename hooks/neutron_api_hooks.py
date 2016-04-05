@@ -650,6 +650,8 @@ def etcd_proxy_force_restart(relation_id=None):
     # treat etcd like the special snowflake it insists on being.
     CONFIGS.register('/etc/init/etcd.conf', [EtcdContext()])
     CONFIGS.write('/etc/init/etcd.conf')
+    CONFIGS.register('/etc/default/etcd', [EtcdContext()])
+    CONFIGS.write('/etc/default/etcd')
 
     if 'etcd-proxy' in CONFIGS.complete_contexts():
         force_etcd_restart()
