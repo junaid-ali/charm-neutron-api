@@ -197,7 +197,7 @@ class NeutronCCContext(context.NeutronContext):
                         log('relation data:cms_id required for'
                             ' nuage plugin: {}'.format(cms_id_value))
                         if cms_id_value is not None:
-                            ctxt['cms_id'] = '{}'.format(cms_id_value)
+                            ctxt['vsd_cms_id'] = cms_id_value
                     log('relation data:vsd-ip-address: {}'.format(vsd_ip))
                     if vsd_ip is not None:
                         ctxt['vsd_server'] = '{}:8443'.format(vsd_ip)

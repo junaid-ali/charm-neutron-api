@@ -20,10 +20,9 @@ import os
 import re
 import time
 from base64 import b64decode
-from subprocess import check_call
+from subprocess import check_call, CalledProcessError
 
 import six
-import yaml
 
 from charmhelpers.fetch import (
     apt_install,
@@ -45,10 +44,12 @@ from charmhelpers.core.hookenv import (
     INFO,
     WARNING,
     ERROR,
+    status_set,
 )
 
 from charmhelpers.core.sysctl import create as sysctl_create
 from charmhelpers.core.strutils import bool_from_string
+from charmhelpers.contrib.openstack.exceptions import OSContextError
 
 from charmhelpers.core.host import (
     get_bond_master,
@@ -87,7 +88,10 @@ from charmhelpers.contrib.network.ip import (
     is_address_in_network,
     is_bridge_member,
 )
-from charmhelpers.contrib.openstack.utils import get_host_ip
+from charmhelpers.contrib.openstack.utils import (
+    config_flags_parser,
+    get_host_ip,
+)
 from charmhelpers.core.unitdata import kv
 
 try:
@@ -98,10 +102,6 @@ except ImportError:
 
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 ADDRESS_TYPES = ['admin', 'internal', 'public']
-
-
-class OSContextError(Exception):
-    pass
 
 
 def ensure_packages(packages):
@@ -122,83 +122,6 @@ def context_complete(ctxt):
         return False
 
     return True
-
-
-def config_flags_parser(config_flags):
-    """Parses config flags string into dict.
-
-    This parsing method supports a few different formats for the config
-    flag values to be parsed:
-
-      1. A string in the simple format of key=value pairs, with the possibility
-         of specifying multiple key value pairs within the same string. For
-         example, a string in the format of 'key1=value1, key2=value2' will
-         return a dict of:
-
-             {'key1': 'value1',
-              'key2': 'value2'}.
-
-      2. A string in the above format, but supporting a comma-delimited list
-         of values for the same key. For example, a string in the format of
-         'key1=value1, key2=value3,value4,value5' will return a dict of:
-
-             {'key1', 'value1',
-              'key2', 'value2,value3,value4'}
-
-      3. A string containing a colon character (:) prior to an equal
-         character (=) will be treated as yaml and parsed as such. This can be
-         used to specify more complex key value pairs. For example,
-         a string in the format of 'key1: subkey1=value1, subkey2=value2' will
-         return a dict of:
-
-             {'key1', 'subkey1=value1, subkey2=value2'}
-
-    The provided config_flags string may be a list of comma-separated values
-    which themselves may be comma-separated list of values.
-    """
-    # If we find a colon before an equals sign then treat it as yaml.
-    # Note: limit it to finding the colon first since this indicates assignment
-    # for inline yaml.
-    colon = config_flags.find(':')
-    equals = config_flags.find('=')
-    if colon > 0:
-        if colon < equals or equals < 0:
-            return yaml.safe_load(config_flags)
-
-    if config_flags.find('==') >= 0:
-        log("config_flags is not in expected format (key=value)", level=ERROR)
-        raise OSContextError
-
-    # strip the following from each value.
-    post_strippers = ' ,'
-    # we strip any leading/trailing '=' or ' ' from the string then
-    # split on '='.
-    split = config_flags.strip(' =').split('=')
-    limit = len(split)
-    flags = {}
-    for i in range(0, limit - 1):
-        current = split[i]
-        next = split[i + 1]
-        vindex = next.rfind(',')
-        if (i == limit - 2) or (vindex < 0):
-            value = next
-        else:
-            value = next[:vindex]
-
-        if i == 0:
-            key = current
-        else:
-            # if this not the first entry, expect an embedded key.
-            index = current.rfind(',')
-            if index < 0:
-                log("Invalid config value(s) at index %s" % (i), level=ERROR)
-                raise OSContextError
-            key = current[index + 1:]
-
-        # Add to collection.
-        flags[key.strip(post_strippers)] = value.rstrip(post_strippers)
-
-    return flags
 
 
 class OSContextGenerator(object):
@@ -1491,3 +1414,92 @@ class InternalEndpointContext(OSContextGenerator):
     """
     def __call__(self):
         return {'use_internal_endpoints': config('use-internal-endpoints')}
+
+
+class AppArmorContext(OSContextGenerator):
+    """Base class for apparmor contexts."""
+
+    def __init__(self):
+        self._ctxt = None
+        self.aa_profile = None
+        self.aa_utils_packages = ['apparmor-utils']
+
+    @property
+    def ctxt(self):
+        if self._ctxt is not None:
+            return self._ctxt
+        self._ctxt = self._determine_ctxt()
+        return self._ctxt
+
+    def _determine_ctxt(self):
+        """
+        Validate aa-profile-mode settings is disable, enforce, or complain.
+
+        :return ctxt: Dictionary of the apparmor profile or None
+        """
+        if config('aa-profile-mode') in ['disable', 'enforce', 'complain']:
+            ctxt = {'aa-profile-mode': config('aa-profile-mode')}
+        else:
+            ctxt = None
+        return ctxt
+
+    def __call__(self):
+        return self.ctxt
+
+    def install_aa_utils(self):
+        """
+        Install packages required for apparmor configuration.
+        """
+        log("Installing apparmor utils.")
+        ensure_packages(self.aa_utils_packages)
+
+    def manually_disable_aa_profile(self):
+        """
+        Manually disable an apparmor profile.
+
+        If aa-profile-mode is set to disabled (default) this is required as the
+        template has been written but apparmor is yet unaware of the profile
+        and aa-disable aa-profile fails. Without this the profile would kick
+        into enforce mode on the next service restart.
+
+        """
+        profile_path = '/etc/apparmor.d'
+        disable_path = '/etc/apparmor.d/disable'
+        if not os.path.lexists(os.path.join(disable_path, self.aa_profile)):
+            os.symlink(os.path.join(profile_path, self.aa_profile),
+                       os.path.join(disable_path, self.aa_profile))
+
+    def setup_aa_profile(self):
+        """
+        Setup an apparmor profile.
+        The ctxt dictionary will contain the apparmor profile mode and
+        the apparmor profile name.
+        Makes calls out to aa-disable, aa-complain, or aa-enforce to setup
+        the apparmor profile.
+        """
+        self()
+        if not self.ctxt:
+            log("Not enabling apparmor Profile")
+            return
+        self.install_aa_utils()
+        cmd = ['aa-{}'.format(self.ctxt['aa-profile-mode'])]
+        cmd.append(self.ctxt['aa-profile'])
+        log("Setting up the apparmor profile for {} in {} mode."
+            "".format(self.ctxt['aa-profile'], self.ctxt['aa-profile-mode']))
+        try:
+            check_call(cmd)
+        except CalledProcessError as e:
+            # If aa-profile-mode is set to disabled (default) manual
+            # disabling is required as the template has been written but
+            # apparmor is yet unaware of the profile and aa-disable aa-profile
+            # fails. If aa-disable learns to read profile files first this can
+            # be removed.
+            if self.ctxt['aa-profile-mode'] == 'disable':
+                log("Manually disabling the apparmor profile for {}."
+                    "".format(self.ctxt['aa-profile']))
+                self.manually_disable_aa_profile()
+                return
+            status_set('blocked', "Apparmor profile {} failed to be set to {}."
+                                  "".format(self.ctxt['aa-profile'],
+                                            self.ctxt['aa-profile-mode']))
+            raise e

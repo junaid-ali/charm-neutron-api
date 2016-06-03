@@ -301,6 +301,12 @@ options:
     description: |
       Its [nuage-openstack-neutron nuagenetlib] for Nuage VSP >=3.2R4 & KILO
       and [nuage-neutron python-nuagenetlib] of Nuage VSP <=3.0 & JUNO
+  vsd-cms-id:
+    type: string
+    default:
+    description: |
+      CMS ID is used as an authentication token from VSD to CMS.
+      This value is being generated via nuage scripts and can be set pre/post deployment.
   vsd-cms-name:
     type: string
     default:
@@ -337,10 +343,6 @@ options:
     type: string
     default: juju-enterprise
     description: Name of the Organization or Enterprise to create in Nuage VSD
-  nuage-tarball-url:
-    type: string
-    default:
-    description: Optional URL to tarball containing Nuage python packages.
   # end of Nuage VSD configuration
   l2-population:
     type: boolean

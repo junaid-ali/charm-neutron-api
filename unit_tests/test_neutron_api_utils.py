@@ -253,16 +253,20 @@ class TestNeutronAPIUtils(CharmTestCase):
             nutils.keystone_ca_cert_b64()
             self.assertTrue(self.b64encode.called)
 
+    @patch.object(charmhelpers.contrib.openstack.utils,
+                  'get_os_codename_install_source')
     @patch.object(nutils, 'migrate_neutron_database')
     @patch.object(nutils, 'stamp_neutron_database')
     @patch.object(nutils, 'git_install_requested')
-    def test_do_openstack_upgrade_juno(self, git_requested,
-                                       stamp_neutron_db, migrate_neutron_db):
+    def test_do_openstack_upgrade(self, git_requested,
+                                  stamp_neutron_db, migrate_neutron_db,
+                                  gsrc):
         git_requested.return_value = False
         self.is_elected_leader.return_value = True
+        self.os_release.return_value = 'icehouse'
         self.config.side_effect = self.test_config.get
         self.test_config.set('openstack-origin', 'cloud:trusty-juno')
-        self.os_release.return_value = 'icehouse'
+        gsrc.return_value = 'juno'
         self.get_os_codename_install_source.return_value = 'juno'
         configs = MagicMock()
         nutils.do_openstack_upgrade(configs)
@@ -285,46 +289,7 @@ class TestNeutronAPIUtils(CharmTestCase):
                                             options=dpkg_opts,
                                             fatal=True)
         configs.set_release.assert_called_with(openstack_release='juno')
-        self.assertItemsEqual(stamp_neutron_db.call_args_list, [])
-        self.assertItemsEqual(migrate_neutron_db.call_args_list, [])
-
-    @patch.object(charmhelpers.contrib.openstack.utils,
-                  'get_os_codename_install_source')
-    @patch.object(nutils, 'migrate_neutron_database')
-    @patch.object(nutils, 'stamp_neutron_database')
-    @patch.object(nutils, 'git_install_requested')
-    def test_do_openstack_upgrade_kilo(self, git_requested,
-                                       stamp_neutron_db, migrate_neutron_db,
-                                       gsrc):
-        git_requested.return_value = False
-        self.is_elected_leader.return_value = True
-        self.os_release.return_value = 'juno'
-        self.config.side_effect = self.test_config.get
-        self.test_config.set('openstack-origin', 'cloud:trusty-kilo')
-        gsrc.return_value = 'kilo'
-        self.get_os_codename_install_source.return_value = 'kilo'
-        configs = MagicMock()
-        nutils.do_openstack_upgrade(configs)
-        self.os_release.assert_called_with('neutron-common')
-        self.assertTrue(self.log.called)
-        self.configure_installation_source.assert_called_with(
-            'cloud:trusty-kilo'
-        )
-        self.apt_update.assert_called_with(fatal=True)
-        dpkg_opts = [
-            '--option', 'Dpkg::Options::=--force-confnew',
-            '--option', 'Dpkg::Options::=--force-confdef',
-        ]
-        self.apt_upgrade.assert_called_with(options=dpkg_opts,
-                                            fatal=True,
-                                            dist=True)
-        pkgs = nutils.determine_packages()
-        pkgs.sort()
-        self.apt_install.assert_called_with(packages=pkgs,
-                                            options=dpkg_opts,
-                                            fatal=True)
-        configs.set_release.assert_called_with(openstack_release='kilo')
-        stamp_neutron_db.assert_called_with('juno')
+        stamp_neutron_db.assert_called_with('icehouse')
         migrate_neutron_db.assert_called_with()
 
     @patch.object(charmhelpers.contrib.openstack.utils,
@@ -332,23 +297,42 @@ class TestNeutronAPIUtils(CharmTestCase):
     @patch.object(nutils, 'migrate_neutron_database')
     @patch.object(nutils, 'stamp_neutron_database')
     @patch.object(nutils, 'git_install_requested')
-    def test_do_openstack_upgrade_kilo_notleader(self, git_requested,
-                                                 stamp_neutron_db,
-                                                 migrate_neutron_db,
-                                                 gsrc):
+    def test_do_openstack_upgrade_liberty(self, git_requested,
+                                          stamp_neutron_db, migrate_neutron_db,
+                                          gsrc):
+        git_requested.return_value = False
+        self.is_elected_leader.return_value = True
+        self.os_release.return_value = 'liberty'
+        self.config.side_effect = self.test_config.get
+        self.test_config.set('openstack-origin', 'cloud:trusty-mitaka')
+        gsrc.return_value = 'mitaka'
+        self.get_os_codename_install_source.return_value = 'mitaka'
+        configs = MagicMock()
+        nutils.do_openstack_upgrade(configs)
+        self.assertFalse(stamp_neutron_db.called)
+
+    @patch.object(charmhelpers.contrib.openstack.utils,
+                  'get_os_codename_install_source')
+    @patch.object(nutils, 'migrate_neutron_database')
+    @patch.object(nutils, 'stamp_neutron_database')
+    @patch.object(nutils, 'git_install_requested')
+    def test_do_openstack_upgrade_notleader(self, git_requested,
+                                            stamp_neutron_db,
+                                            migrate_neutron_db,
+                                            gsrc):
         git_requested.return_value = False
         self.is_elected_leader.return_value = False
-        self.os_release.return_value = 'juno'
+        self.os_release.return_value = 'icehouse'
         self.config.side_effect = self.test_config.get
-        self.test_config.set('openstack-origin', 'cloud:trusty-kilo')
-        gsrc.return_value = 'kilo'
-        self.get_os_codename_install_source.return_value = 'kilo'
+        self.test_config.set('openstack-origin', 'cloud:trusty-juno')
+        gsrc.return_value = 'juno'
+        self.get_os_codename_install_source.return_value = 'juno'
         configs = MagicMock()
         nutils.do_openstack_upgrade(configs)
         self.os_release.assert_called_with('neutron-common')
         self.assertTrue(self.log.called)
         self.configure_installation_source.assert_called_with(
-            'cloud:trusty-kilo'
+            'cloud:trusty-juno'
         )
         self.apt_update.assert_called_with(fatal=True)
         dpkg_opts = [
@@ -363,7 +347,7 @@ class TestNeutronAPIUtils(CharmTestCase):
         self.apt_install.assert_called_with(packages=pkgs,
                                             options=dpkg_opts,
                                             fatal=True)
-        configs.set_release.assert_called_with(openstack_release='kilo')
+        configs.set_release.assert_called_with(openstack_release='juno')
         self.assertFalse(stamp_neutron_db.called)
         self.assertFalse(migrate_neutron_db.called)
 

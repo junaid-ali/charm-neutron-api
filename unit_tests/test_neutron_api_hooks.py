@@ -74,6 +74,7 @@ TO_PATCH = [
     'IdentityServiceContext',
     'force_etcd_restart',
     'status_set',
+    'network_get_primary_address',
 ]
 NEUTRON_CONF_DIR = "/etc/neutron"
 
@@ -117,6 +118,7 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.test_config.set('openstack-origin', 'distro')
         self.test_config.set('neutron-plugin', 'ovs')
         self.neutron_plugin_attribute.side_effect = _mock_nuage_npa
+        self.network_get_primary_address.side_effect = NotImplementedError
 
     def _fake_relids(self, rel_name):
         return [randrange(100) for _count in range(2)]
@@ -339,6 +341,18 @@ class NeutronAPIHooksTests(CharmTestCase):
             username='neutron',
             database='neutron',
             hostname='myhostname',
+        )
+
+    def test_db_joined_spaces(self):
+        self.network_get_primary_address.side_effect = None
+        self.network_get_primary_address.return_value = '192.168.20.1'
+        self.is_relation_made.return_value = False
+        self.unit_get.return_value = 'myhostname'
+        self._call_hook('shared-db-relation-joined')
+        self.relation_set.assert_called_with(
+            username='neutron',
+            database='neutron',
+            hostname='192.168.20.1',
         )
 
     def test_db_joined_with_postgresql(self):
@@ -843,28 +857,7 @@ class NeutronAPIHooksTests(CharmTestCase):
                                             'openstack_https_frontend'])
         self.assertTrue(_id_rel_joined.called)
 
-    def test_conditional_neutron_migration_icehouse(self):
-        self.os_release.return_value = 'icehouse'
-        hooks.conditional_neutron_migration()
-        self.log.assert_called_with(
-            'Not running neutron database migration as migrations are handled '
-            'by the neutron-server process or nova-cloud-controller charm.'
-        )
-
-    def test_conditional_neutron_migration_ncc_rel_leader_juno(self):
-        self.test_relation.set({
-            'allowed_units': 'neutron-api/0 neutron-api/1 neutron-api/4',
-        })
-        self.local_unit.return_value = 'neutron-api/1'
-        self.is_elected_leader.return_value = True
-        self.os_release.return_value = 'juno'
-        hooks.conditional_neutron_migration()
-        self.log.assert_called_with(
-            'Not running neutron database migration as migrations are handled'
-            ' by the neutron-server process or nova-cloud-controller charm.'
-        )
-
-    def test_conditional_neutron_migration_ncc_rel_leader_kilo(self):
+    def test_conditional_neutron_migration_leader(self):
         self.test_relation.set({
             'allowed_units': 'neutron-api/0 neutron-api/1 neutron-api/4',
         })
@@ -875,16 +868,22 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.migrate_neutron_database.assert_called_with()
         self.service_restart.assert_called_with('neutron-server')
 
-    def test_conditional_neutron_migration_ncc_rel_notleader(self):
+    def test_conditional_neutron_migration_leader_icehouse(self):
+        self.test_relation.set({
+            'allowed_units': 'neutron-api/0 neutron-api/1 neutron-api/4',
+        })
+        self.local_unit.return_value = 'neutron-api/1'
+        self.is_elected_leader.return_value = True
+        self.os_release.return_value = 'icehouse'
+        hooks.conditional_neutron_migration()
+        self.assertFalse(self.migrate_neutron_database.called)
+
+    def test_conditional_neutron_migration_notleader(self):
         self.is_elected_leader.return_value = False
-        self.os_release.return_value = 'juno'
+        self.os_release.return_value = 'icehouse'
         hooks.conditional_neutron_migration()
         self.assertFalse(self.migrate_neutron_database.called)
         self.assertFalse(self.service_restart.called)
-        self.log.assert_called_with(
-            'Not running neutron database migration as migrations are handled '
-            'by the neutron-server process or nova-cloud-controller charm.'
-        )
 
     def test_etcd_peer_joined(self):
         self._call_hook('etcd-proxy-relation-joined')

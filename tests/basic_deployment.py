@@ -154,8 +154,7 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
 
         keystone_config = {'admin-password': 'openstack',
                            'admin-token': 'ubuntutesting'}
-        nova_cc_config = {'network-manager': 'Quantum',
-                          'quantum-security-groups': 'yes'}
+        nova_cc_config = {'network-manager': 'Neutron'}
         configs = {'neutron-api': neutron_api_config,
                    'keystone': keystone_config,
                    'nova-cloud-controller': nova_cc_config}
@@ -215,6 +214,9 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
             self.neutron_gw_sentry: neutron_services,
             self.neutron_api_sentry: neutron_api_services,
         }
+
+        if self._get_openstack_release() >= self.trusty_liberty:
+            services[self.keystone_sentry] = ['apache2']
 
         ret = u.validate_services_by_name(services)
         if ret:
@@ -454,7 +456,22 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
             rel_napi_ks['auth_port']
         )
 
-        if self._get_openstack_release() >= self.trusty_liberty:
+        if self._get_openstack_release() >= self.trusty_mitaka:
+            expected['nova'] = {
+                'auth_section': 'keystone_authtoken',
+            }
+            expected['keystone_authtoken'] = {
+                'auth_uri': auth_uri.rstrip('/'),
+                'auth_url': auth_url.rstrip('/'),
+                'auth_type': 'password',
+                'project_domain_name': 'default',
+                'user_domain_name': 'default',
+                'project_name': 'services',
+                'username': rel_napi_ks['service_username'],
+                'password': rel_napi_ks['service_password'],
+                'signing_dir': '/var/cache/neutron'
+            }
+        elif self._get_openstack_release() >= self.trusty_liberty:
             expected['nova'] = {
                 'auth_section': 'keystone_authtoken',
             }
