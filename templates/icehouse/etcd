@@ -1,3 +1,19 @@
+# This file is rendered by Juju, manual edits will not be persisted
 ETCD_PROXY=on
 ETCD_INITIAL_CLUSTER={{ cluster }}
 ETCD_DATA_DIR=/var/lib/etcd
+ETCD_LISTEN_CLIENT_URLS="http://127.0.0.1:4001"
+
+# SSL configuration
+{% if server_certificate %}
+ETCD_PEER_CERT_FILE={{ server_certificate }}
+{% endif %}
+{% if server_key %}
+ETCD_PEER_KEY_FILE={{ server_key }}
+{% endif %}
+{% if ca_certificate %}
+ETCD_PEER_TRUSTED_CA_FILE={{ ca_certificate }}
+{% endif %}
+
+# SSL Strict Mode
+ETCD_PEER_CLIENT_CERT_AUTH=true

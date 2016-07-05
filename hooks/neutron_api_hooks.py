@@ -627,9 +627,10 @@ def etcd_proxy_force_restart(relation_id=None):
     # but occasionally it does require a full config nuking. This does not
     # play well with the standard neutron-api config management, so we
     # treat etcd like the special snowflake it insists on being.
-    CONFIGS.register('/etc/init/etcd.conf', [EtcdContext()])
+    etcd_context = EtcdContext()
+    CONFIGS.register('/etc/init/etcd.conf', [etcd_context])
     CONFIGS.write('/etc/init/etcd.conf')
-    CONFIGS.register('/etc/default/etcd', [EtcdContext()])
+    CONFIGS.register('/etc/default/etcd', [etcd_context])
     CONFIGS.write('/etc/default/etcd')
 
     if 'etcd-proxy' in CONFIGS.complete_contexts():
