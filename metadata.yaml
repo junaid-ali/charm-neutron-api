@@ -54,5 +54,5 @@ peers:
   cluster:
     interface: neutron-api-ha
 series:
-  - trusty
   - xenial
+  - trusty
