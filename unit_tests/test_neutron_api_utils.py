@@ -1,3 +1,17 @@
+# Copyright 2016 Canonical Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from mock import MagicMock, patch, call
 from collections import OrderedDict
 from copy import deepcopy
@@ -28,10 +42,15 @@ TO_PATCH = [
     'config',
     'configure_installation_source',
     'get_os_codename_install_source',
+    'git_pip_venv_dir',
+    'git_src_dir',
     'log',
+    'lsb_release',
     'neutron_plugin_attribute',
     'os_release',
     'pip_install',
+    'render',
+    'service_restart',
     'subprocess',
     'is_elected_leader',
     'service_stop',
@@ -126,7 +145,8 @@ class TestNeutronAPIUtils(CharmTestCase):
         self.get_os_codename_install_source.return_value = 'kilo'
         pkg_list = nutils.determine_packages()
         expect = deepcopy(nutils.BASE_PACKAGES)
-        expect.extend(['neutron-server', 'neutron-plugin-ml2'])
+        expect.extend(['neutron-server', 'neutron-plugin-ml2',
+                      'python-networking-hyperv'])
         expect.extend(nutils.KILO_PACKAGES)
         self.assertItemsEqual(pkg_list, expect)
 
@@ -508,22 +528,18 @@ class TestNeutronAPIUtils(CharmTestCase):
         ]
         self.assertEquals(write_file.call_args_list, expected)
 
-    @patch.object(nutils, 'git_src_dir')
-    @patch.object(nutils, 'service_restart')
-    @patch.object(nutils, 'render')
-    @patch.object(nutils, 'git_pip_venv_dir')
     @patch('os.path.join')
     @patch('os.path.exists')
     @patch('os.symlink')
     @patch('shutil.copytree')
     @patch('shutil.rmtree')
     @patch('subprocess.check_call')
-    def test_git_post_install(self, check_call, rmtree, copytree, symlink,
-                              exists, join, venv, render, service_restart,
-                              git_src_dir):
+    def test_git_post_install_upstart(self, check_call, rmtree, copytree,
+                                      symlink, exists, join):
         projects_yaml = openstack_origin_git
         join.return_value = 'joined-string'
-        venv.return_value = '/mnt/openstack-git/venv'
+        self.git_pip_venv_dir.return_value = '/mnt/openstack-git/venv'
+        self.lsb_release.return_value = {'DISTRIB_RELEASE': '15.04'}
         nutils.git_post_install(projects_yaml)
         expected = [
             call('joined-string', '/etc/neutron'),
@@ -549,11 +565,33 @@ class TestNeutronAPIUtils(CharmTestCase):
                  '/etc/init/neutron-server.conf',
                  neutron_api_context, perms=0o644),
         ]
-        self.assertEquals(render.call_args_list, expected)
+        self.assertEquals(self.render.call_args_list, expected)
         expected = [
             call('neutron-server'),
         ]
-        self.assertEquals(service_restart.call_args_list, expected)
+        self.assertEquals(self.service_restart.call_args_list, expected)
+
+    @patch('os.listdir')
+    @patch('os.path.join')
+    @patch('os.path.exists')
+    @patch('os.symlink')
+    @patch('shutil.copytree')
+    @patch('shutil.rmtree')
+    @patch('subprocess.check_call')
+    def test_git_post_install_systemd(self, check_call, rmtree, copytree,
+                                      symlink, exists, join, listdir):
+        projects_yaml = openstack_origin_git
+        join.return_value = 'joined-string'
+        self.git_pip_venv_dir.return_value = '/mnt/openstack-git/venv'
+        self.lsb_release.return_value = {'DISTRIB_RELEASE': '15.10'}
+        nutils.git_post_install(projects_yaml)
+        expected = [
+            call('git/neutron_sudoers', '/etc/sudoers.d/neutron_sudoers',
+                 {}, perms=288),
+            call('git/neutron-server.init.in.template', 'joined-string',
+                 {'daemon_path': 'joined-string'}, perms=420)
+        ]
+        self.assertEquals(self.render.call_args_list, expected)
 
     def test_stamp_neutron_database(self):
         nutils.stamp_neutron_database('icehouse')
@@ -637,6 +675,7 @@ class TestNeutronAPIUtils(CharmTestCase):
             asf.assert_called_once_with('test-config')
             callee.assert_called_once_with()
 
+    @patch.object(nutils, 'get_optional_interfaces')
     @patch.object(nutils, 'REQUIRED_INTERFACES')
     @patch.object(nutils, 'services')
     @patch.object(nutils, 'determine_ports')
@@ -645,13 +684,19 @@ class TestNeutronAPIUtils(CharmTestCase):
                                 make_assess_status_func,
                                 determine_ports,
                                 services,
-                                REQUIRED_INTERFACES):
+                                REQUIRED_INTERFACES,
+                                get_optional_interfaces):
         services.return_value = 's1'
+        REQUIRED_INTERFACES.copy.return_value = {'int': ['test 1']}
+        get_optional_interfaces.return_value = {'opt': ['test 2']}
         determine_ports.return_value = 'p1'
         nutils.assess_status_func('test-config')
         # ports=None whilst port checks are disabled.
         make_assess_status_func.assert_called_once_with(
-            'test-config', REQUIRED_INTERFACES, services='s1', ports=None)
+            'test-config',
+            {'int': ['test 1'], 'opt': ['test 2']},
+            charm_func=nutils.check_optional_relations,
+            services='s1', ports=None)
 
     def test_pause_unit_helper(self):
         with patch.object(nutils, '_pause_resume_helper') as prh:

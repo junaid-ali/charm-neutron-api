@@ -1,3 +1,17 @@
+# Copyright 2016 Canonical Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 
 from charmhelpers.core.hookenv import (
@@ -185,6 +199,7 @@ class NeutronCCContext(context.NeutronContext):
         ctxt['dhcp_agents_per_network'] = config('dhcp-agents-per-network')
         ctxt['overlay_network_type'] = self.neutron_overlay_network_type
         ctxt['external_network'] = config('neutron-external-network')
+        release = os_release('neutron-server')
         if config('neutron-plugin') in ['vsp']:
             _config = config()
             for k, v in _config.iteritems():
@@ -194,7 +209,7 @@ class NeutronCCContext(context.NeutronContext):
                 for unit in related_units(rid):
                     rdata = relation_get(rid=rid, unit=unit)
                     vsd_ip = rdata.get('vsd-ip-address')
-                    if os_release('neutron-server') >= 'kilo':
+                    if release >= 'kilo':
                         cms_id_value = rdata.get('nuage-cms-id')
                         log('relation data:cms_id required for'
                             ' nuage plugin: {}'.format(cms_id_value))
@@ -240,6 +255,12 @@ class NeutronCCContext(context.NeutronContext):
             ctxt['vni_ranges'] = ','.join(vni_ranges.split())
 
         ctxt['enable_ml2_port_security'] = config('enable-ml2-port-security')
+        ctxt['enable_sriov'] = config('enable-sriov')
+
+        if release == 'kilo' or release >= 'mitaka':
+            ctxt['enable_hyperv'] = True
+        else:
+            ctxt['enable_hyperv'] = False
 
         return ctxt
 

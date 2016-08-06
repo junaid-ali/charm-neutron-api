@@ -1,3 +1,17 @@
+# Copyright 2016 Canonical Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import json
 
 from mock import patch
@@ -306,6 +320,7 @@ class NeutronCCContextTest(CharmTestCase):
             'enable_dvr': False,
             'l3_ha': False,
             'dhcp_agents_per_network': 3,
+            'enable_sriov': False,
             'external_network': 'bob',
             'neutron_bind_port': self.api_port,
             'verbose': True,
@@ -324,7 +339,8 @@ class NeutronCCContextTest(CharmTestCase):
             'quota_vip': 10,
             'vlan_ranges': 'physnet1:1000:2000',
             'vni_ranges': '1001:2000',
-            'enable_ml2_port_security': True
+            'enable_ml2_port_security': True,
+            'enable_hyperv': False
         }
         napi_ctxt = context.NeutronCCContext()
         with patch.object(napi_ctxt, '_ensure_packages'):
@@ -343,6 +359,7 @@ class NeutronCCContextTest(CharmTestCase):
             'enable_dvr': False,
             'l3_ha': False,
             'dhcp_agents_per_network': 3,
+            'enable_sriov': False,
             'external_network': 'bob',
             'neutron_bind_port': self.api_port,
             'verbose': True,
@@ -362,7 +379,8 @@ class NeutronCCContextTest(CharmTestCase):
             'vlan_ranges': 'physnet1:1000:2000',
             'vni_ranges': '1001:2000,3001:4000',
             'network_providers': 'physnet2,physnet3',
-            'enable_ml2_port_security': True
+            'enable_ml2_port_security': True,
+            'enable_hyperv': False
         }
         napi_ctxt = context.NeutronCCContext()
         with patch.object(napi_ctxt, '_ensure_packages'):
@@ -382,6 +400,7 @@ class NeutronCCContextTest(CharmTestCase):
             'debug': True,
             'enable_dvr': False,
             'l3_ha': True,
+            'enable_sriov': False,
             'external_network': 'bob',
             'neutron_bind_port': self.api_port,
             'verbose': True,
@@ -403,7 +422,45 @@ class NeutronCCContextTest(CharmTestCase):
             'quota_vip': 10,
             'vlan_ranges': 'physnet1:1000:2000',
             'vni_ranges': '1001:2000',
-            'enable_ml2_port_security': True
+            'enable_ml2_port_security': True,
+            'enable_hyperv': False
+        }
+        napi_ctxt = context.NeutronCCContext()
+        with patch.object(napi_ctxt, '_ensure_packages'):
+            self.assertEquals(ctxt_data, napi_ctxt())
+
+    @patch.object(context.NeutronCCContext, 'network_manager')
+    @patch.object(context.NeutronCCContext, 'plugin')
+    @patch('__builtin__.__import__')
+    def test_neutroncc_context_sriov(self, _import, plugin, nm):
+        plugin.return_value = None
+        self.test_config.set('enable-sriov', True)
+        ctxt_data = {
+            'debug': True,
+            'enable_dvr': False,
+            'l3_ha': False,
+            'dhcp_agents_per_network': 3,
+            'enable_sriov': True,
+            'external_network': 'bob',
+            'neutron_bind_port': self.api_port,
+            'verbose': True,
+            'l2_population': True,
+            'overlay_network_type': 'gre',
+            'quota_floatingip': 50,
+            'quota_health_monitors': -1,
+            'quota_member': -1,
+            'quota_network': 10,
+            'quota_pool': 10,
+            'quota_port': 50,
+            'quota_router': 10,
+            'quota_security_group': 10,
+            'quota_security_group_rule': 100,
+            'quota_subnet': 10,
+            'quota_vip': 10,
+            'vlan_ranges': 'physnet1:1000:2000',
+            'vni_ranges': '1001:2000',
+            'enable_ml2_port_security': True,
+            'enable_hyperv': False
         }
         napi_ctxt = context.NeutronCCContext()
         with patch.object(napi_ctxt, '_ensure_packages'):

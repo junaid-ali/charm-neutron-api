@@ -1,3 +1,17 @@
+# Copyright 2016 Canonical Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import sys
 
 import yaml
@@ -75,6 +89,7 @@ TO_PATCH = [
     'force_etcd_restart',
     'status_set',
     'network_get_primary_address',
+    'update_dns_ha_resource_params',
 ]
 NEUTRON_CONF_DIR = "/etc/neutron"
 
@@ -497,6 +512,7 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.is_relation_made = False
         neutron_url = '%s:%s' % (host, port)
         _relation_data = {
+            'enable-sriov': False,
             'neutron-plugin': 'ovs',
             'neutron-url': neutron_url,
             'neutron-security-groups': 'no',
@@ -527,6 +543,7 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.is_relation_made = True
         neutron_url = '%s:%s' % (host, port)
         _relation_data = {
+            'enable-sriov': False,
             'neutron-plugin': 'ovs',
             'neutron-url': neutron_url,
             'neutron-security-groups': 'no',
@@ -731,6 +748,7 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.get_iface_for_address.return_value = 'eth0'
         self.get_netmask_for_address.return_value = '255.255.255.0'
         _relation_data = {
+            'relation_id': None,
             'init_services': {'res_neutron_haproxy': 'haproxy'},
             'corosync_bindiface': _ha_config['ha-bindiface'],
             'corosync_mcastport': _ha_config['ha-mcastport'],
@@ -763,6 +781,7 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.get_iface_for_address.return_value = None
         self.get_netmask_for_address.return_value = None
         _relation_data = {
+            'relation_id': None,
             'init_services': {'res_neutron_haproxy': 'haproxy'},
             'corosync_bindiface': _ha_config['ha-bindiface'],
             'corosync_mcastport': _ha_config['ha-mcastport'],
@@ -799,6 +818,7 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.get_iface_for_address.return_value = 'eth0'
         self.get_netmask_for_address.return_value = 'ffff.ffff.ffff.ffff'
         _relation_data = {
+            'relation_id': None,
             'init_services': {'res_neutron_haproxy': 'haproxy'},
             'corosync_bindiface': _ha_config['ha-bindiface'],
             'corosync_mcastport': _ha_config['ha-mcastport'],
@@ -816,6 +836,43 @@ class NeutronAPIHooksTests(CharmTestCase):
         self.relation_set.assert_called_with(
             **_relation_data
         )
+
+    @patch.object(hooks, 'get_hacluster_config')
+    def test_ha_joined_dns_ha(self, _get_hacluster_config):
+        def _fake_update(resources, resource_params, relation_id=None):
+            resources.update({'res_neutron_public_hostname':
+                              'ocf:maas:dns'})
+            resource_params.update({'res_neutron_public_hostname':
+                                    'params fqdn="neutron-api.maas" '
+                                    'ip_address="10.0.0.1"'})
+
+        self.test_config.set('dns-ha', True)
+        _get_hacluster_config.return_value = {
+            'vip': None,
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080',
+            'os-admin-hostname': None,
+            'os-internal-hostname': None,
+            'os-public-hostname': 'neutron-api.maas',
+        }
+        args = {
+            'relation_id': None,
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_neutron_haproxy': 'haproxy'},
+            'resources': {'res_neutron_public_hostname': 'ocf:maas:dns',
+                          'res_neutron_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_neutron_public_hostname':
+                    'params fqdn="neutron-api.maas" ip_address="10.0.0.1"',
+                'res_neutron_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_nova_haproxy': 'res_neutron_haproxy'}
+        }
+        self.update_dns_ha_resource_params.side_effect = _fake_update
+
+        hooks.ha_joined()
+        self.assertTrue(self.update_dns_ha_resource_params.called)
+        self.relation_set.assert_called_with(**args)
 
     def test_ha_changed(self):
         self.test_relation.set({

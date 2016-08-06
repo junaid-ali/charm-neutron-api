@@ -37,22 +37,41 @@ options:
 
       NOTE: updating this setting to a source that is known to provide
       a later version of OpenStack will trigger a software upgrade.
-
-      NOTE: when openstack-origin-git is specified, openstack specific
-      packages will be installed from source rather than from the
-      openstack-origin repository.
   openstack-origin-git:
     default:
     type: string
     description: |
-      Specifies a YAML-formatted dictionary listing the git
-      repositories and branches from which to install OpenStack and
-      its dependencies.
+      Specifies a default OpenStack release name, or a YAML dictionary
+      listing the git repositories to install from.
 
-      Note that the installed config files will be determined based on
-      the OpenStack release of the openstack-origin option.
+      The default Openstack release name may be one of the following, where
+      the corresponding OpenStack github branch will be used:
+        * liberty
+        * mitaka
+        * master
 
-      For more details see README.md.
+      The YAML must minimally include the following repositories, and may
+      also include repositories for other dependencies:
+        repositories:
+        - {name: requirements,
+           repository: 'git://github.com/openstack/requirements',
+           branch: master}
+        - {name: networking-hyperv,
+           repository: 'git://github.com/openstack/networking-hyperv',
+           branch: master}
+        - {name: neutron-fwaas,
+           repository: 'git://github.com/openstack/neutron-fwaas',
+           branch: master}
+        - {name: neutron-lbaas,
+           repository: 'git://github.com/openstack/neutron-lbaas',
+           branch: master}
+        - {name: neutron-vpnaas,
+           repository: 'git://github.com/openstack/neutron-vpnaas',
+           branch: master}
+        - {name: neutron,
+           repository: 'git://github.com/openstack/neutron',
+           branch: master}
+        release: master
   rabbit-user:
     default: neutron
     type: string
@@ -206,6 +225,12 @@ options:
       Number of floating IPs allowed per tenant. A negative value means
       unlimited.
   # HA configuration settings
+  dns-ha:
+    type: boolean
+    default: False
+    description: |
+        Use DNS HA with MAAS 2.0. Note if this is set do not set vip
+        settings below.
   vip:
     type: string
     default:
@@ -276,6 +301,30 @@ options:
       will create the following endpoint for neutron-api:
       .
       https://neutron-api.example.com:9696/
+  os-internal-hostname:
+    type: string
+    default:
+    description: |
+      The hostname or address of the internal endpoints created for neutron-api
+      in the keystone identity provider.
+      .
+      This value will be used for internal endpoints. For example, an
+      os-internal-hostname set to 'neutron-api.internal.example.com' with ssl
+      enabled will create a internal endpoint for neutron-api:
+      .
+      https://neutron-api.internal.example.com:9696/
+  os-admin-hostname:
+    type: string
+    default:
+    description: |
+      The hostname or address of the admin endpoints created for neutron-api
+      in the keystone identity provider.
+      .
+      This value will be used for admin endpoints. For example, an
+      os-admin-hostname set to 'neutron-api.admin.example.com' with ssl enabled
+      will create a internal endpoint for neutron-api:
+      .
+      https://neutron-api.admin.example.com:9696/
   ssl_cert:
     type: string
     default:
@@ -364,8 +413,8 @@ options:
       disabled and a non-temporary address must be configured/available on
       your network interface.
   worker-multiplier:
-    type: int
-    default: 2
+    type: float
+    default: 2.0
     description: |
       The CPU core multiplier to use when configuring worker processes for
       Neutron.  By default, the number of workers for each daemon is set to
@@ -517,6 +566,11 @@ options:
     description: |
        Connect timeout configuration in ms for haproxy, used in HA
        configurations. If not provided, default value of 5000ms is used.
+  enable-sriov:
+    type: boolean
+    default: False
+    description: |
+       Enable SR-IOV networking support across Neutron and Nova.
   midonet-origin:
     default: midonet-2015.06
     type: string
@@ -545,3 +599,20 @@ options:
     description: |
       Apply system hardening. Supports a space-delimited list of modules
       to run. Supported modules currently include os, ssh, apache and mysql.
+  config-flags:
+    type: string
+    default:
+    description: |
+      Comma-separated list of key=value config flags. These values will be
+      placed in the neutron.conf [DEFAULT] section.
+      .
+      WARNING: this is not the recommended way to configure the underlying
+      services that this charm installs and is used at the user's own risk.
+      This option is mainly provided as a stop-gap for users that either
+      want to test the effect of modifying some config or who have found
+      a critical bug in the way the charm has configured their services
+      and need it fixed immediately. We ask that whenever this is used,
+      that the user consider opening a bug on this charm at
+      http://bugs.launchpad.net/charms providing an explanation of why the
+      config was needed so that we may consider it for inclusion as a
+      natively supported config in the the charm.

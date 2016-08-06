@@ -1,3 +1,17 @@
+# Copyright 2016 Canonical Ltd
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from collections import OrderedDict
 from copy import deepcopy
 from functools import partial
@@ -14,14 +28,15 @@ from charmhelpers.contrib.openstack.neutron import (
 from charmhelpers.contrib.openstack.utils import (
     os_release,
     get_os_codename_install_source,
-    git_install_requested,
     git_clone_and_install,
-    git_src_dir,
+    git_default_repos,
+    git_generate_systemd_init_files,
+    git_install_requested,
     git_pip_venv_dir,
+    git_src_dir,
     git_yaml_value,
     configure_installation_source,
     incomplete_relation_data,
-    set_os_workload_status,
     is_unit_paused_set,
     make_assess_status_func,
     pause_unit,
@@ -37,7 +52,6 @@ from charmhelpers.core.hookenv import (
     config,
     log,
     relation_ids,
-    status_get,
 )
 
 from charmhelpers.fetch import (
@@ -97,6 +111,7 @@ BASE_GIT_PACKAGES = [
     'libxml2-dev',
     'libxslt1-dev',
     'libyaml-dev',
+    'openstack-pkg-tools',
     'python-dev',
     'python-neutronclient',  # required for get_neutron_client() import
     'python-pip',
@@ -148,6 +163,7 @@ BASE_RESOURCE_MAP = OrderedDict([
                      neutron_api_context.IdentityServiceContext(
                          service='neutron',
                          service_user='neutron'),
+                     context.OSConfigFlagContext(),
                      neutron_api_context.NeutronCCContext(),
                      context.SyslogContext(),
                      context.ZeroMQContext(),
@@ -286,8 +302,13 @@ def determine_packages(source=None):
                                             'neutron')
             packages.extend(pkgs)
 
-    if get_os_codename_install_source(source) >= 'kilo':
+    release = get_os_codename_install_source(source)
+
+    if release >= 'kilo':
         packages.extend(KILO_PACKAGES)
+
+    if release == 'kilo' or release >= 'mitaka':
+        packages.append('python-networking-hyperv')
 
     if config('neutron-plugin') == 'vsp':
         nuage_pkgs = config('nuage-packages').split()
@@ -300,7 +321,7 @@ def determine_packages(source=None):
         for p in GIT_PACKAGE_BLACKLIST:
             if p in packages:
                 packages.remove(p)
-        if get_os_codename_install_source(source) >= 'kilo':
+        if release >= 'kilo':
             for p in GIT_PACKAGE_BLACKLIST_KILO:
                 packages.remove(p)
 
@@ -570,6 +591,7 @@ def git_install(projects_yaml):
     """Perform setup, and install git repos specified in yaml parameter."""
     if git_install_requested():
         git_pre_install()
+        projects_yaml = git_default_repos(projects_yaml)
         git_clone_and_install(projects_yaml, core_project='neutron')
         git_post_install(projects_yaml)
 
@@ -641,38 +663,65 @@ def git_post_install(projects_yaml):
            perms=0o440)
 
     bin_dir = os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
-    neutron_api_context = {
-        'service_description': 'Neutron API server',
-        'charm_name': 'neutron-api',
-        'process_name': 'neutron-server',
-        'executable_name': os.path.join(bin_dir, 'neutron-server'),
-    }
+    # Use systemd init units/scripts from ubuntu wily onward
+    if lsb_release()['DISTRIB_RELEASE'] >= '15.10':
+        templates_dir = os.path.join(charm_dir(), 'templates/git')
+        daemon = 'neutron-server'
+        neutron_api_context = {
+            'daemon_path': os.path.join(bin_dir, daemon),
+        }
+        template_file = 'git/{}.init.in.template'.format(daemon)
+        init_in_file = '{}.init.in'.format(daemon)
+        render(template_file, os.path.join(templates_dir, init_in_file),
+               neutron_api_context, perms=0o644)
+        git_generate_systemd_init_files(templates_dir)
+    else:
+        neutron_api_context = {
+            'service_description': 'Neutron API server',
+            'charm_name': 'neutron-api',
+            'process_name': 'neutron-server',
+            'executable_name': os.path.join(bin_dir, 'neutron-server'),
+        }
 
-    # NOTE(coreycb): Needs systemd support
-    render('git/upstart/neutron-server.upstart',
-           '/etc/init/neutron-server.conf',
-           neutron_api_context, perms=0o644)
+        render('git/upstart/neutron-server.upstart',
+               '/etc/init/neutron-server.conf',
+               neutron_api_context, perms=0o644)
 
     if not is_unit_paused_set():
         service_restart('neutron-server')
 
 
-def check_optional_relations(configs):
-    required_interfaces = {}
+def get_optional_interfaces():
+    """Return the optional interfaces that should be checked if the relavent
+    relations have appeared.
+    :returns: {general_interface: [specific_int1, specific_int2, ...], ...}
+    """
+    optional_interfaces = {}
     if relation_ids('ha'):
-        required_interfaces['ha'] = ['cluster']
+        optional_interfaces['ha'] = ['cluster']
+    return optional_interfaces
+
+
+def check_optional_relations(configs):
+    """Check that if we have a relation_id for high availability that we can
+    get the hacluster config.  If we can't then we are blocked.  This function
+    is called from assess_status/set_os_workload_status as the charm_func and
+    needs to return either "unknown", "" if there is no problem or the status,
+    message if there is a problem.
+
+    :param configs: an OSConfigRender() instance.
+    :return 2-tuple: (string, string) = (status, message)
+    """
+    if relation_ids('ha'):
         try:
             get_hacluster_config()
         except:
             return ('blocked',
                     'hacluster missing configuration: '
                     'vip, vip_iface, vip_cidr')
-
-    if required_interfaces:
-        set_os_workload_status(configs, required_interfaces)
-        return status_get()
-    else:
-        return 'unknown', 'No optional relations'
+    # return 'unknown' as the lowest priority to not clobber an existing
+    # status.
+    return 'unknown', ''
 
 
 def is_api_ready(configs):
@@ -700,14 +749,22 @@ def assess_status_func(configs):
     Used directly by assess_status() and also for pausing and resuming
     the unit.
 
+    NOTE: REQUIRED_INTERFACES is augmented with the optional interfaces
+    depending on the current config before being passed to the
+    make_assess_status_func() function.
+
     NOTE(ajkavanagh) ports are not checked due to race hazards with services
     that don't behave sychronously w.r.t their service scripts.  e.g.
     apache2.
+
     @param configs: a templating.OSConfigRenderer() object
     @return f() -> None : a function that assesses the unit's workload status
     """
+    required_interfaces = REQUIRED_INTERFACES.copy()
+    required_interfaces.update(get_optional_interfaces())
     return make_assess_status_func(
-        configs, REQUIRED_INTERFACES,
+        configs, required_interfaces,
+        charm_func=check_optional_relations,
         services=services(), ports=None)
 
 

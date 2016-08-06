@@ -1,5 +1,6 @@
 [nova]
 auth_section = keystone_authtoken
+region_name = {{ region }}
 {% if use_internal_endpoints -%}
 endpoint_type = internal
 {% endif %}

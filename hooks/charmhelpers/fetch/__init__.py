@@ -1,18 +1,16 @@
 # Copyright 2014-2015 Canonical Limited.
 #
-# This file is part of charm-helpers.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 #
-# charm-helpers is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Lesser General Public License version 3 as
-# published by the Free Software Foundation.
+#  http://www.apache.org/licenses/LICENSE-2.0
 #
-# charm-helpers is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License
-# along with charm-helpers.  If not, see <http://www.gnu.org/licenses/>.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import importlib
 from tempfile import NamedTemporaryFile
@@ -180,14 +178,14 @@ def filter_installed_packages(packages):
     return _pkgs
 
 
-def apt_cache(in_memory=True):
+def apt_cache(in_memory=True, progress=None):
     """Build and return an apt cache"""
     from apt import apt_pkg
     apt_pkg.init()
     if in_memory:
         apt_pkg.config.set("Dir::Cache::pkgcache", "")
         apt_pkg.config.set("Dir::Cache::srcpkgcache", "")
-    return apt_pkg.Cache()
+    return apt_pkg.Cache(progress)
 
 
 def apt_install(packages, options=None, fatal=False):
@@ -398,16 +396,13 @@ def install_remote(source, *args, **kwargs):
     # We ONLY check for True here because can_handle may return a string
     # explaining why it can't handle a given source.
     handlers = [h for h in plugins() if h.can_handle(source) is True]
-    installed_to = None
     for handler in handlers:
         try:
-            installed_to = handler.install(source, *args, **kwargs)
+            return handler.install(source, *args, **kwargs)
         except UnhandledSource as e:
             log('Install source attempt unsuccessful: {}'.format(e),
                 level='WARNING')
-    if not installed_to:
-        raise UnhandledSource("No handler found for source {}".format(source))
-    return installed_to
+    raise UnhandledSource("No handler found for source {}".format(source))
 
 
 def install_from_config(config_var_name):
