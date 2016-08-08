@@ -332,14 +332,14 @@ class EtcdContext(context.OSContextGenerator):
         if cluster_string:
             ctxt['cluster'] = cluster_string
         if client_cert:
-            ctxt['server_certificate'] = self._save_data(client_cert,
-                                                         '/tmp/etcd_cert')
+            ctxt['server_certificate'] = \
+                self._save_data(client_cert, '/etc/neutron-api/etcd_cert')
         if client_key:
-            ctxt['server_key'] = self._save_data(client_key,
-                                                 '/tmp/etcd_key')
+            ctxt['server_key'] = \
+                self._save_data(client_key, '/etc/neutron-api/etcd_key')
         if client_ca:
-            ctxt['ca_certificate'] = self._save_data(client_ca,
-                                                     '/tmp/etcd_ca')
+            ctxt['ca_certificate'] = \
+                self._save_data(client_ca, '/etc/neutron-api/etcd_ca')
 
         log('EtcdContext: %r' % ctxt)
 
