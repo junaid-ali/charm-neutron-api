@@ -93,6 +93,7 @@ from neutron_api_context import (
     get_overlay_network_type,
     IdentityServiceContext,
     EtcdContext,
+    etcd_config_hash,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -652,13 +653,22 @@ def etcd_proxy_force_restart(relation_id=None):
     # but occasionally it does require a full config nuking. This does not
     # play well with the standard neutron-api config management, so we
     # treat etcd like the special snowflake it insists on being.
+    old_etcd_config_hash = etcd_config_hash()
     etcd_context = EtcdContext()
     CONFIGS.register('/etc/init/etcd.conf', [etcd_context])
     CONFIGS.write('/etc/init/etcd.conf')
     CONFIGS.register('/etc/default/etcd', [etcd_context])
     CONFIGS.write('/etc/default/etcd')
+    new_etcd_config_hash = etcd_config_hash()
+    ready_contexts = CONFIGS.complete_contexts()
 
-    if 'etcd-proxy' in CONFIGS.complete_contexts():
+    log('Old etcd config hash %s' % old_etcd_config_hash)
+    log('New etcd config hash %s' % new_etcd_config_hash)
+    log('Ready contexts %s' % ready_contexts)
+
+    if ('etcd-proxy' in ready_contexts and
+        new_etcd_config_hash != old_etcd_config_hash):
+        log('Force etcd restart')
         force_etcd_restart()
 
 

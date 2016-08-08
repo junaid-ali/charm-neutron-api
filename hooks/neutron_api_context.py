@@ -21,6 +21,7 @@ from charmhelpers.core.hookenv import (
     relation_get,
     log,
 )
+from charmhelpers.core.host import file_hash
 from charmhelpers.contrib.openstack import context
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_api_port,
@@ -310,40 +311,36 @@ class EtcdContext(context.OSContextGenerator):
         return path
 
     def __call__(self):
-        ctxt = {}
-        cluster_string = None
-        client_cert = None
-        client_key = None
-        client_ca = None
-
         if not config('neutron-plugin') == 'Calico':
-            return ctxt
+            return {}
 
         for rid in relation_ids('etcd-proxy'):
             for unit in related_units(rid):
                 rdata = relation_get(rid=rid, unit=unit)
-                cluster_string = cluster_string or rdata.get('cluster')
-                client_cert = client_cert or rdata.get('client_cert')
-                client_key = client_key or rdata.get('client_key')
-                client_ca = client_ca or rdata.get('client_ca')
+                cluster_string = rdata.get('cluster')
+                client_cert = rdata.get('client_cert')
+                client_key = rdata.get('client_key')
+                client_ca = rdata.get('client_ca')
                 if cluster_string and client_cert and client_key and client_ca:
-                    break
+                    return {'cluster': cluster_string,
+                            'server_certificate':
+                            self._save_data(client_cert,
+                                            '/etc/neutron-api/etcd_cert'),
+                            'server_key':
+                            self._save_data(client_key,
+                                            '/etc/neutron-api/etcd_key'),
+                            'ca_certificate':
+                            self._save_data(client_ca,
+                                            '/etc/neutron-api/etcd_ca')}
 
-        if cluster_string:
-            ctxt['cluster'] = cluster_string
-        if client_cert:
-            ctxt['server_certificate'] = \
-                self._save_data(client_cert, '/etc/neutron-api/etcd_cert')
-        if client_key:
-            ctxt['server_key'] = \
-                self._save_data(client_key, '/etc/neutron-api/etcd_key')
-        if client_ca:
-            ctxt['ca_certificate'] = \
-                self._save_data(client_ca, '/etc/neutron-api/etcd_ca')
+        return {}
 
-        log('EtcdContext: %r' % ctxt)
 
-        return ctxt
+def etcd_config_hash():
+    return ((file_hash('/etc/default/etcd') or '?') +
+            (file_hash('/etc/neutron-api/etcd_cert') or '?') +
+            (file_hash('/etc/neutron-api/etcd_key') or '?') +
+            (file_hash('/etc/neutron-api/etcd_ca') or '?'))
 
 
 class NeutronApiSDNContext(context.SubordinateConfigContext):
