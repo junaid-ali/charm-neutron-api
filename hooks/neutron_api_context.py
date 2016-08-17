@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import re
+import subprocess
 
 from charmhelpers.core.hookenv import (
     config,
@@ -21,7 +23,10 @@ from charmhelpers.core.hookenv import (
     relation_get,
     log,
 )
-from charmhelpers.core.host import file_hash
+from charmhelpers.core.host import (
+    data_hash,
+    file_hash
+)
 from charmhelpers.contrib.openstack import context
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_api_port,
@@ -301,7 +306,7 @@ class EtcdContext(context.OSContextGenerator):
     interfaces = ['etcd-proxy']
 
     def _save_data(self, data, path):
-        ''' Save the specified data to a file indicated by path, creating the
+        '''Save the specified data to a file indicated by path, creating the
         parent directory if needed.'''
         parent = os.path.dirname(path)
         if not os.path.isdir(parent):
@@ -322,6 +327,72 @@ class EtcdContext(context.OSContextGenerator):
                 client_key = rdata.get('client_key')
                 client_ca = rdata.get('client_ca')
                 if cluster_string and client_cert and client_key and client_ca:
+                    # We have all the information we need to run an etcd proxy,
+                    # so we could generate and return a complete context.
+                    #
+                    # However, we don't need to restart the etcd proxy if it is
+                    # already running, if there is overlap between the new
+                    # 'cluster_string' and the peers that the proxy is already
+                    # aware of, and if the TLS credentials are the same as the
+                    # proxy already has.
+                    #
+                    # So, in this block of code we determine whether the etcd
+                    # proxy needs to be restarted.  If it doesn't, we return a
+                    # null context.  If it does, we generate and return a
+                    # complete context with the information needed to do that.
+
+                    # First determine the peers that the existing etcd proxy is
+                    # aware of.
+                    existing_peers = set([])
+                    try:
+                        peer_info = subprocess.check_output(['etcdctl',
+                                                             '--no-sync',
+                                                             'member',
+                                                             'list'])
+                        for line in peer_info.split('\n'):
+                            m = re.search('name=([^ ]+) peerURLs=([^ ]+)',
+                                          line)
+                            if m:
+                                existing_peers.add('%s=%s' % (m.group(1),
+                                                              m.group(2)))
+                    except:
+                        # Probably this means that the proxy was not already
+                        # running.  We treat this the same as there being no
+                        # existing peers.
+                        log('"etcdctl --no-sync member list" call failed')
+
+                    log('Existing etcd peers: %r' % existing_peers)
+
+                    # Now get the peers indicated by the new cluster_string.
+                    new_peers = set(cluster_string.split(','))
+                    log('New etcd peers: %r' % new_peers)
+
+                    if new_peers & existing_peers:
+                        # New and existing peers overlap, so we probably don't
+                        # need to restart the etcd proxy.  But check in case
+                        # the TLS credentials have changed.
+                        log('New and existing etcd peers overlap')
+
+                        existing_cred_hash = (
+                            (file_hash('/etc/neutron-api/etcd_cert') or '?') +
+                            (file_hash('/etc/neutron-api/etcd_key') or '?') +
+                            (file_hash('/etc/neutron-api/etcd_ca') or '?')
+                        )
+                        log('Existing credentials: %s' % existing_cred_hash)
+
+                        new_cred_hash = (
+                            data_hash(client_cert) +
+                            data_hash(client_key) +
+                            data_hash(client_ca)
+                        )
+                        log('New credentials: %s' % new_cred_hash)
+
+                        if new_cred_hash == existing_cred_hash:
+                            log('TLS credentials unchanged')
+                            return {}
+
+                    # We need to start or restart the etcd proxy, so generate a
+                    # context with the new cluster string and TLS credentials.
                     return {'cluster': cluster_string,
                             'server_certificate':
                             self._save_data(client_cert,
@@ -334,13 +405,6 @@ class EtcdContext(context.OSContextGenerator):
                                             '/etc/neutron-api/etcd_ca')}
 
         return {}
-
-
-def etcd_config_hash():
-    return ((file_hash('/etc/default/etcd') or '?') +
-            (file_hash('/etc/neutron-api/etcd_cert') or '?') +
-            (file_hash('/etc/neutron-api/etcd_key') or '?') +
-            (file_hash('/etc/neutron-api/etcd_ca') or '?'))
 
 
 class NeutronApiSDNContext(context.SubordinateConfigContext):
