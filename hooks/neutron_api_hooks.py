@@ -201,6 +201,18 @@ def install():
         mkdir('/etc/neutron/plugins/midonet', owner='neutron', group='neutron',
               perms=0o755, force=False)
 
+    etcd_package_url = config('etcd-package-url')
+    if etcd_package_url.startswith('http'):
+        check_call([
+            "wget",
+            etcd_package_url
+        ])
+        check_call([
+            "dpkg",
+            "-i",
+            etcd_package_url.split('/')[-1]
+        ])
+
 
 @hooks.hook('vsd-rest-api-relation-joined')
 @restart_on_change(restart_map(), stopstart=True)

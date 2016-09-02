@@ -527,6 +527,15 @@ options:
       Repository from which to install Calico packages. If set, must be
       a PPA URL, of the form ppa:somecustom/ppa. Changing this value
       after installation will force an immediate software upgrade.
+  etcd-package-url:
+    default:
+    type: string
+    description: |
+      URL for an etcd package to install. If this URL has a newer package
+      version than the current package in the Ubuntu archive, it will replace
+      the Ubuntu archive package.
+
+      Example: http://launchpadlibrarian.net/274096873/etcd_2.3.7+dfsg-4_amd64.deb
   # End of Calico plugin configuration
   action-managed-upgrade:
     type: boolean
