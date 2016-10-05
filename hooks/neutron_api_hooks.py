@@ -202,7 +202,7 @@ def install():
               perms=0o755, force=False)
 
     etcd_package_url = config('etcd-package-url')
-    if etcd_package_url.startswith('http'):
+    if etcd_package_url and etcd_package_url.startswith('http'):
         check_call([
             "wget",
             etcd_package_url
