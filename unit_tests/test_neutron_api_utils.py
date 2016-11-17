@@ -56,6 +56,7 @@ TO_PATCH = [
     'service_stop',
     'service_start',
     'glob',
+    'os_application_version_set',
 ]
 
 openstack_origin_git = \
@@ -674,6 +675,9 @@ class TestNeutronAPIUtils(CharmTestCase):
             nutils.assess_status('test-config')
             asf.assert_called_once_with('test-config')
             callee.assert_called_once_with()
+            self.os_application_version_set.assert_called_with(
+                nutils.VERSION_PACKAGE
+            )
 
     @patch.object(nutils, 'get_optional_interfaces')
     @patch.object(nutils, 'REQUIRED_INTERFACES')

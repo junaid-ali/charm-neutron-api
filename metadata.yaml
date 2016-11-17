@@ -18,6 +18,11 @@ extra-bindings:
   public:
   admin:
   internal:
+series:
+  - xenial
+  - trusty
+  - precise
+  - yakkety
 provides:
   nrpe-external-master:
     interface: nrpe-external-master

@@ -45,9 +45,10 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
         self._deploy()
 
         u.log.info('Waiting on extended status checks...')
-        exclude_services = ['mysql']
+        exclude_services = []
         self._auto_wait_for_status(exclude_services=exclude_services)
 
+        self.d.sentry.wait()
         self._initialize_tests()
 
     def _assert_services(self, should_run):
@@ -64,30 +65,32 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
            compatible with the local charm (e.g. stable or next).
            """
         this_service = {'name': 'neutron-api'}
-        other_services = [{'name': 'mysql'},
-                          {'name': 'rabbitmq-server'},
-                          {'name': 'keystone'},
-                          {'name': 'glance'},  # to satisfy workload status
-                          {'name': 'neutron-openvswitch'},
-                          {'name': 'nova-cloud-controller'},
-                          {'name': 'neutron-gateway'},
-                          {'name': 'nova-compute'}]
+        other_services = [
+            {'name': 'percona-cluster', 'constraints': {'mem': '3072M'}},
+            {'name': 'rabbitmq-server'},
+            {'name': 'keystone'},
+            {'name': 'glance'},  # to satisfy workload status
+            {'name': 'neutron-openvswitch'},
+            {'name': 'nova-cloud-controller'},
+            {'name': 'neutron-gateway'},
+            {'name': 'nova-compute'}
+        ]
         super(NeutronAPIBasicDeployment, self)._add_services(this_service,
                                                              other_services)
 
     def _add_relations(self):
         """Add all of the relations for the services."""
         relations = {
-            'neutron-api:shared-db': 'mysql:shared-db',
+            'neutron-api:shared-db': 'percona-cluster:shared-db',
             'neutron-api:amqp': 'rabbitmq-server:amqp',
             'neutron-api:neutron-api': 'nova-cloud-controller:neutron-api',
             'neutron-api:neutron-plugin-api': 'neutron-gateway:'
                                               'neutron-plugin-api',
             'neutron-api:identity-service': 'keystone:identity-service',
-            'keystone:shared-db': 'mysql:shared-db',
+            'keystone:shared-db': 'percona-cluster:shared-db',
             'nova-compute:neutron-plugin': 'neutron-openvswitch:'
                                            'neutron-plugin',
-            'nova-cloud-controller:shared-db': 'mysql:shared-db',
+            'nova-cloud-controller:shared-db': 'percona-cluster:shared-db',
             'neutron-gateway:amqp': 'rabbitmq-server:amqp',
             'nova-cloud-controller:amqp': 'rabbitmq-server:amqp',
             'nova-compute:amqp': 'rabbitmq-server:amqp',
@@ -97,7 +100,7 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
             'nova-cloud-controller:cloud-compute': 'nova-compute:'
                                                    'cloud-compute',
             'glance:identity-service': 'keystone:identity-service',
-            'glance:shared-db': 'mysql:shared-db',
+            'glance:shared-db': 'percona-cluster:shared-db',
             'glance:amqp': 'rabbitmq-server:amqp',
             'nova-compute:image-service': 'glance:image-service',
             'nova-cloud-controller:image-service': 'glance:image-service',
@@ -169,15 +172,25 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
         keystone_config = {'admin-password': 'openstack',
                            'admin-token': 'ubuntutesting'}
         nova_cc_config = {'network-manager': 'Neutron'}
-        configs = {'neutron-api': neutron_api_config,
-                   'keystone': keystone_config,
-                   'nova-cloud-controller': nova_cc_config}
+        pxc_config = {
+            'dataset-size': '25%',
+            'max-connections': 1000,
+            'root-password': 'ChangeMe123',
+            'sst-password': 'ChangeMe123',
+        }
+
+        configs = {
+            'neutron-api': neutron_api_config,
+            'keystone': keystone_config,
+            'percona-cluster': pxc_config,
+            'nova-cloud-controller': nova_cc_config,
+        }
         super(NeutronAPIBasicDeployment, self)._configure_services(configs)
 
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
-        self.mysql_sentry = self.d.sentry['mysql'][0]
+        self.pxc_sentry = self.d.sentry['percona-cluster'][0]
         self.keystone_sentry = self.d.sentry['keystone'][0]
         self.rabbitmq_sentry = self.d.sentry['rabbitmq-server'][0]
         self.nova_cc_sentry = self.d.sentry['nova-cloud-controller'][0]
@@ -196,24 +209,27 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
            service units."""
         u.log.debug('Checking status of system services...')
         neutron_api_services = ['neutron-server']
-        if self._get_openstack_release() >= self.trusty_mitaka:
+        if self._get_openstack_release() >= self.xenial_newton:
+            neutron_services = ['neutron-dhcp-agent',
+                                'neutron-lbaasv2-agent',
+                                'neutron-metadata-agent',
+                                'neutron-openvswitch-agent']
+        elif self._get_openstack_release() >= self.trusty_mitaka and \
+                self._get_openstack_release() < self.xenial_newton:
             neutron_services = ['neutron-dhcp-agent',
                                 'neutron-lbaas-agent',
                                 'neutron-metadata-agent',
-                                'neutron-openvswitch-agent',
-                                'neutron-ovs-cleanup']
+                                'neutron-openvswitch-agent']
         else:
             neutron_services = ['neutron-dhcp-agent',
                                 'neutron-lbaas-agent',
                                 'neutron-metadata-agent',
-                                'neutron-plugin-openvswitch-agent',
-                                'neutron-ovs-cleanup']
+                                'neutron-plugin-openvswitch-agent']
 
         if self._get_openstack_release() <= self.trusty_juno:
             neutron_services.append('neutron-vpn-agent')
 
         if self._get_openstack_release() < self.trusty_kilo:
-            # Juno or earlier
             neutron_services.append('neutron-metering-agent')
 
         nova_cc_services = ['nova-api-os-compute',
@@ -222,7 +238,6 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
                             'nova-conductor']
 
         services = {
-            self.mysql_sentry: ['mysql'],
             self.keystone_sentry: ['keystone'],
             self.nova_cc_sentry: nova_cc_services,
             self.neutron_gw_sentry: neutron_services,
@@ -240,7 +255,7 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
         """Verify the neutron-api to mysql shared-db relation data"""
         u.log.debug('Checking neutron-api:mysql db relation data...')
         unit = self.neutron_api_sentry
-        relation = ['shared-db', 'mysql:shared-db']
+        relation = ['shared-db', 'percona-cluster:shared-db']
         expected = {
             'private-address': u.valid_ip,
             'database': 'neutron',
@@ -256,7 +271,7 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
     def test_201_shared_db_neutron_api_relation(self):
         """Verify the mysql to neutron-api shared-db relation data"""
         u.log.debug('Checking mysql:neutron-api db relation data...')
-        unit = self.mysql_sentry
+        unit = self.pxc_sentry
         relation = ['shared-db', 'neutron-api:shared-db']
         expected = {
             'db_host': u.valid_ip,
@@ -442,8 +457,8 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
         nova_auth_url = '{}://{}:{}/v2.0'.format(rel_napi_ks['auth_protocol'],
                                                  rel_napi_ks['auth_host'],
                                                  rel_napi_ks['auth_port'])
-        rel_napi_db = self.mysql_sentry.relation('shared-db',
-                                                 'neutron-api:shared-db')
+        rel_napi_db = self.pxc_sentry.relation('shared-db',
+                                               'neutron-api:shared-db')
         db_conn = 'mysql://neutron:{}@{}/neutron'.format(
             rel_napi_db['password'], rel_napi_db['db_host'])
 
@@ -561,7 +576,8 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
         u.log.debug('Checking ml2 config file data...')
         unit = self.neutron_api_sentry
         conf = '/etc/neutron/plugins/ml2/ml2_conf.ini'
-        neutron_api_relation = unit.relation('shared-db', 'mysql:shared-db')
+        neutron_api_relation = unit.relation(
+            'shared-db', 'percona-cluster:shared-db')
 
         expected = {
             'ml2': {

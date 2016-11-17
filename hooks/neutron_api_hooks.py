@@ -53,7 +53,6 @@ from charmhelpers.fetch import (
 from charmhelpers.contrib.openstack.utils import (
     config_value_changed,
     configure_installation_source,
-    set_os_workload_status,
     git_install_requested,
     openstack_upgrade_available,
     os_requires_version,
@@ -66,7 +65,6 @@ from charmhelpers.contrib.openstack.utils import (
 from neutron_api_utils import (
     CLUSTER_RES,
     NEUTRON_CONF,
-    REQUIRED_INTERFACES,
     api_port,
     determine_packages,
     determine_ports,
@@ -82,9 +80,9 @@ from neutron_api_utils import (
     services,
     setup_ipv6,
     get_topics,
-    check_optional_relations,
     additional_install_locations,
     force_etcd_restart,
+    assess_status,
 )
 from neutron_api_context import (
     get_dvr,
@@ -697,8 +695,7 @@ def main():
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e))
-    set_os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                           charm_func=check_optional_relations)
+    assess_status(CONFIGS)
 
 
 if __name__ == '__main__':
