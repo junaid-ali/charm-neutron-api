@@ -49,20 +49,63 @@ class GeneralTests(CharmTestCase):
         self.test_config.set('neutron-plugin', 'nsx')
         self.assertEquals(context.get_l2population(), False)
 
-    def test_get_overlay_network_type(self):
+    def test_get_tenant_network_types(self):
         self.test_config.set('overlay-network-type', 'gre')
-        self.assertEquals(context.get_overlay_network_type(), 'gre')
+        self.assertEquals(
+            context._get_tenant_network_types(),
+            ['gre', 'vlan', 'flat', 'local'])
 
-    def test_get_overlay_network_type_multi(self):
+    def test_get_tenant_network_types_multi(self):
         self.test_config.set('overlay-network-type', 'gre vxlan')
-        self.assertEquals(context.get_overlay_network_type(), 'gre,vxlan')
+        self.assertEquals(
+            context._get_tenant_network_types(),
+            ['gre', 'vxlan', 'vlan', 'flat', 'local'])
 
-    def test_get_overlay_network_type_unsupported(self):
+    def test_get_tenant_network_types_unsupported(self):
         self.test_config.set('overlay-network-type', 'tokenring')
         with self.assertRaises(ValueError) as _exceptctxt:
-            context.get_overlay_network_type()
+            context._get_tenant_network_types()
         self.assertEqual(_exceptctxt.exception.message,
                          'Unsupported overlay-network-type tokenring')
+
+    def test_get_tenant_network_types_default(self):
+        self.test_config.set('overlay-network-type', 'gre vxlan')
+        self.test_config.set('default-tenant-network-type', 'vxlan')
+        self.assertEquals(
+            context._get_tenant_network_types(),
+            ['vxlan', 'gre', 'vlan', 'flat', 'local'])
+
+    def test_get_tenant_network_types_default_dup(self):
+        self.test_config.set('overlay-network-type', 'gre')
+        self.test_config.set('default-tenant-network-type', 'vlan')
+        self.assertEquals(
+            context._get_tenant_network_types(),
+            ['vlan', 'gre', 'flat', 'local'])
+
+    def test_get_tenant_network_types_empty(self):
+        self.test_config.set('overlay-network-type', '')
+        self.test_config.set('default-tenant-network-type', 'vlan')
+        self.assertEquals(
+            context._get_tenant_network_types(),
+            ['vlan', 'flat', 'local'])
+
+    def test_get_tenant_network_types_unsupported_default(self):
+        self.test_config.set('overlay-network-type', '')
+        self.test_config.set('default-tenant-network-type', 'whizzy')
+        with self.assertRaises(ValueError) as _exceptctxt:
+            context._get_tenant_network_types()
+        self.assertEqual(_exceptctxt.exception.message,
+                         'Unsupported or unconfigured '
+                         'default-tenant-network-type whizzy')
+
+    def test_get_tenant_network_types_unconfigured_default(self):
+        self.test_config.set('overlay-network-type', 'gre')
+        self.test_config.set('default-tenant-network-type', 'vxlan')
+        with self.assertRaises(ValueError) as _exceptctxt:
+            context._get_tenant_network_types()
+        self.assertEqual(_exceptctxt.exception.message,
+                         'Unsupported or unconfigured '
+                         'default-tenant-network-type vxlan')
 
     def test_get_l3ha(self):
         self.test_config.set('enable-l3ha', True)
@@ -252,7 +295,6 @@ class HAProxyContextTest(CharmTestCase):
         _get_netmask_for_address.return_value = '255.255.255.0'
         _kv().get.return_value = 'abcdefghijklmnopqrstuvwxyz123456'
         service_ports = {'neutron-server': [9696, 9686]}
-        self.maxDiff = None
         ctxt_data = {
             'local_host': '127.0.0.1',
             'haproxy_host': '0.0.0.0',
@@ -326,6 +368,7 @@ class NeutronCCContextTest(CharmTestCase):
             'verbose': True,
             'l2_population': True,
             'overlay_network_type': 'gre',
+            'tenant_network_types': 'gre,vlan,flat,local',
             'quota_floatingip': 50,
             'quota_health_monitors': -1,
             'quota_member': -1,
@@ -365,6 +408,7 @@ class NeutronCCContextTest(CharmTestCase):
             'verbose': True,
             'l2_population': True,
             'overlay_network_type': 'vxlan',
+            'tenant_network_types': 'vxlan,vlan,flat,local',
             'quota_floatingip': 50,
             'quota_health_monitors': -1,
             'quota_member': -1,
@@ -406,6 +450,7 @@ class NeutronCCContextTest(CharmTestCase):
             'verbose': True,
             'l2_population': False,
             'overlay_network_type': 'gre',
+            'tenant_network_types': 'gre,vlan,flat,local',
             'max_l3_agents_per_router': 2,
             'min_l3_agents_per_router': 2,
             'dhcp_agents_per_network': 3,
@@ -446,6 +491,7 @@ class NeutronCCContextTest(CharmTestCase):
             'verbose': True,
             'l2_population': True,
             'overlay_network_type': 'gre',
+            'tenant_network_types': 'gre,vlan,flat,local',
             'quota_floatingip': 50,
             'quota_health_monitors': -1,
             'quota_member': -1,

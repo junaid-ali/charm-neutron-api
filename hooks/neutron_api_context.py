@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import OrderedDict
+
 import os
 import re
 import subprocess
@@ -39,7 +41,11 @@ from charmhelpers.contrib.openstack.utils import (
 VLAN = 'vlan'
 VXLAN = 'vxlan'
 GRE = 'gre'
+FLAT = 'flat'
+LOCAL = 'local'
 OVERLAY_NET_TYPES = [VXLAN, GRE]
+NON_OVERLAY_NET_TYPES = [VLAN, FLAT, LOCAL]
+TENANT_NET_TYPES = [VXLAN, GRE, VLAN, FLAT, LOCAL]
 
 
 def get_l2population():
@@ -47,13 +53,42 @@ def get_l2population():
     return config('l2-population') if plugin == "ovs" else False
 
 
-def get_overlay_network_type():
+def _get_overlay_network_type():
     overlay_networks = config('overlay-network-type').split()
     for overlay_net in overlay_networks:
         if overlay_net not in OVERLAY_NET_TYPES:
             raise ValueError('Unsupported overlay-network-type %s'
                              % overlay_net)
-    return ','.join(overlay_networks)
+    return overlay_networks
+
+
+def get_overlay_network_type():
+    return ','.join(_get_overlay_network_type())
+
+
+def _get_tenant_network_types():
+    default_tenant_network_type = config('default-tenant-network-type')
+    tenant_network_types = _get_overlay_network_type()
+    tenant_network_types.extend(NON_OVERLAY_NET_TYPES)
+    if default_tenant_network_type:
+        if (default_tenant_network_type in TENANT_NET_TYPES and
+                default_tenant_network_type in tenant_network_types):
+            tenant_network_types[:0] = [default_tenant_network_type]
+        else:
+            raise ValueError('Unsupported or unconfigured '
+                             'default-tenant-network-type'
+                             ' {}'.format(default_tenant_network_type))
+    # Dedupe list but preserve order
+    return list(OrderedDict.fromkeys(tenant_network_types))
+
+
+def get_tenant_network_types():
+    '''Get the configured tenant network types
+
+    @return: comma delimited string of configured tenant
+             network types.
+    '''
+    return ','.join(_get_tenant_network_types())
 
 
 def get_l3ha():
@@ -133,6 +168,10 @@ class NeutronCCContext(context.NeutronContext):
         return get_l2population()
 
     @property
+    def neutron_tenant_network_types(self):
+        return get_tenant_network_types()
+
+    @property
     def neutron_overlay_network_type(self):
         return get_overlay_network_type()
 
@@ -203,6 +242,7 @@ class NeutronCCContext(context.NeutronContext):
             ctxt['min_l3_agents_per_router'] = \
                 config('min-l3-agents-per-router')
         ctxt['dhcp_agents_per_network'] = config('dhcp-agents-per-network')
+        ctxt['tenant_network_types'] = self.neutron_tenant_network_types
         ctxt['overlay_network_type'] = self.neutron_overlay_network_type
         ctxt['external_network'] = config('neutron-external-network')
         release = os_release('neutron-server')

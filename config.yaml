@@ -140,7 +140,8 @@ options:
         gre
         vxlan
       .
-      Multiple types can be provided - field is space delimited.
+      Multiple types can be provided - field is space delimited. To disable
+      overlay networks set to the empty string ''
   flat-network-providers:
     type: string
     default:
@@ -626,3 +627,8 @@ options:
       http://bugs.launchpad.net/charms providing an explanation of why the
       config was needed so that we may consider it for inclusion as a
       natively supported config in the the charm.
+  default-tenant-network-type:
+    type: string
+    default:
+    description: |
+      The default type for a tenant network e.g. vxlan, vlan, gre etc
