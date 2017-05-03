@@ -1,6 +1,4 @@
-#!/usr/bin/env python
-#
-# Copyright 2016 Canonical Ltd
+# Copyright 2014-2015 Canonical Limited.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""Amulet tests on a basic neutron-api deployment on yakkety-newton."""
-
-from basic_deployment import NeutronAPIBasicDeployment
-
-if __name__ == '__main__':
-    deployment = NeutronAPIBasicDeployment(series='yakkety')
-    deployment.run_tests()

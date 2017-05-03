@@ -308,6 +308,14 @@ class NeutronCCContext(context.NeutronContext):
         else:
             ctxt['enable_hyperv'] = False
 
+        if release >= 'mitaka':
+            if config('global-physnet-mtu'):
+                ctxt['global_physnet_mtu'] = config('global-physnet-mtu')
+                if config('path-mtu'):
+                    ctxt['path_mtu'] = config('path-mtu')
+                else:
+                    ctxt['path_mtu'] = config('global-physnet-mtu')
+
         return ctxt
 
 

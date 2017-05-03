@@ -109,7 +109,7 @@ UBUNTU_OPENSTACK_RELEASE = OrderedDict([
     ('wily', 'liberty'),
     ('xenial', 'mitaka'),
     ('yakkety', 'newton'),
-    ('zebra', 'ocata'),  # TODO: upload with real Z name
+    ('zesty', 'ocata'),
 ])
 
 
@@ -152,6 +152,8 @@ SWIFT_CODENAMES = OrderedDict([
         ['2.5.0', '2.6.0', '2.7.0']),
     ('newton',
         ['2.8.0', '2.9.0', '2.10.0']),
+    ('ocata',
+        ['2.11.0', '2.12.0']),
 ])
 
 # >= Liberty version->codename mapping
@@ -410,14 +412,26 @@ def get_os_version_package(pkg, fatal=True):
 os_rel = None
 
 
-def os_release(package, base='essex'):
+def reset_os_release():
+    '''Unset the cached os_release version'''
+    global os_rel
+    os_rel = None
+
+
+def os_release(package, base='essex', reset_cache=False):
     '''
     Returns OpenStack release codename from a cached global.
+
+    If reset_cache then unset the cached os_release version and return the
+    freshly determined version.
+
     If the codename can not be determined from either an installed package or
     the installation source, the earliest release supported by the charm should
     be returned.
     '''
     global os_rel
+    if reset_cache:
+        reset_os_release()
     if os_rel:
         return os_rel
     os_rel = (git_os_codename_install_source(config('openstack-origin-git')) or
@@ -535,6 +549,9 @@ def configure_installation_source(rel):
             'newton': 'xenial-updates/newton',
             'newton/updates': 'xenial-updates/newton',
             'newton/proposed': 'xenial-proposed/newton',
+            'ocata': 'xenial-updates/ocata',
+            'ocata/updates': 'xenial-updates/ocata',
+            'ocata/proposed': 'xenial-proposed/ocata',
         }
 
         try:
@@ -667,6 +684,7 @@ def clean_storage(block_device):
         remove_lvm_physical_volume(block_device)
     else:
         zap_disk(block_device)
+
 
 is_ip = ip.is_ip
 ns_query = ip.ns_query
@@ -1099,6 +1117,35 @@ def git_generate_systemd_init_files(templates_dir):
                 if os.path.exists(service_dest):
                     os.remove(service_dest)
                 shutil.copyfile(service_source, service_dest)
+
+
+def git_determine_usr_bin():
+    """Return the /usr/bin path for Apache2 config.
+
+    The /usr/bin path will be located in the virtualenv if the charm
+    is configured to deploy from source.
+    """
+    if git_install_requested():
+        projects_yaml = config('openstack-origin-git')
+        projects_yaml = git_default_repos(projects_yaml)
+        return os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
+    else:
+        return '/usr/bin'
+
+
+def git_determine_python_path():
+    """Return the python-path for Apache2 config.
+
+    Returns 'None' unless the charm is configured to deploy from source,
+    in which case the path of the virtualenv's site-packages is returned.
+    """
+    if git_install_requested():
+        projects_yaml = config('openstack-origin-git')
+        projects_yaml = git_default_repos(projects_yaml)
+        return os.path.join(git_pip_venv_dir(projects_yaml),
+                            'lib/python2.7/site-packages')
+    else:
+        return None
 
 
 def os_workload_status(configs, required_interfaces, charm_func=None):
@@ -1907,3 +1954,36 @@ def os_application_version_set(package):
         application_version_set(os_release(package))
     else:
         application_version_set(application_version)
+
+
+def enable_memcache(source=None, release=None, package=None):
+    """Determine if memcache should be enabled on the local unit
+
+    @param release: release of OpenStack currently deployed
+    @param package: package to derive OpenStack version deployed
+    @returns boolean Whether memcache should be enabled
+    """
+    _release = None
+    if release:
+        _release = release
+    else:
+        _release = os_release(package, base='icehouse')
+    if not _release:
+        _release = get_os_codename_install_source(source)
+
+    # TODO: this should be changed to a numeric comparison using a known list
+    # of releases and comparing by index.
+    return _release >= 'mitaka'
+
+
+def token_cache_pkgs(source=None, release=None):
+    """Determine additional packages needed for token caching
+
+    @param source: source string for charm
+    @param release: release of OpenStack currently deployed
+    @returns List of package to enable token caching
+    """
+    packages = []
+    if enable_memcache(source=source, release=release):
+        packages.extend(['memcached', 'python-memcache'])
+    return packages

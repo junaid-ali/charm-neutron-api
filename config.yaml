@@ -118,6 +118,10 @@ options:
       The MTU size for interfaces managed by neutron. If unset or set to
       0, no value will be applied. This value will be provided to
       neutron-plugin-api relations.
+      .
+      NOTE: This option is deprecated and will be removed in Newton.
+      Please use the system-wide global-physnet-mtu setting which the
+      agents will take into account when wiring VIFs.
   neutron-plugin:
     default: ovs
     type: string
@@ -632,3 +636,23 @@ options:
     default:
     description: |
       The default type for a tenant network e.g. vxlan, vlan, gre etc
+  global-physnet-mtu:
+    type: int
+    default: 1500
+    description: |
+      MTU of the underlying physical network. Neutron uses this value to
+      calculate MTU for all virtual network components. For flat and
+      VLAN networks, neutron uses this value without modification. For
+      overlay networks such as VXLAN, neutron automatically subtracts
+      the overlay protocol overhead from this value.
+      .
+      NOTE: This options is available starting from Mitaka release.
+  path-mtu:
+    type: int
+    default:
+    description: |
+      Maximum size of an IP packet (MTU) that can traverse the
+      underlying physical network infrastructure without fragmentation
+      when using an overlay/tunnel protocol. This option allows
+      specifying a physical network MTU value that differs from the
+      default global-physnet-mtu value.

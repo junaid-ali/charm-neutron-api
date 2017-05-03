@@ -42,6 +42,8 @@ from charmhelpers.contrib.openstack.utils import (
     pause_unit,
     resume_unit,
     os_application_version_set,
+    token_cache_pkgs,
+    enable_memcache,
 )
 
 from charmhelpers.contrib.python.packages import (
@@ -153,6 +155,7 @@ APACHE_CONF = '/etc/apache2/sites-available/openstack_https_frontend'
 APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 NEUTRON_DEFAULT = '/etc/default/neutron-server'
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
+MEMCACHED_CONF = '/etc/memcached.conf'
 
 BASE_RESOURCE_MAP = OrderedDict([
     (NEUTRON_CONF, {
@@ -173,7 +176,8 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.NotificationDriverContext(),
                      context.BindHostContext(),
                      context.WorkerConfigContext(),
-                     context.InternalEndpointContext()],
+                     context.InternalEndpointContext(),
+                     context.MemcacheContext()],
     }),
     (NEUTRON_DEFAULT, {
         'services': ['neutron-server'],
@@ -328,6 +332,7 @@ def determine_packages(source=None):
             for p in GIT_PACKAGE_BLACKLIST_KILO:
                 packages.remove(p)
 
+    packages.extend(token_cache_pkgs(release=release))
     return list(set(packages))
 
 
@@ -384,6 +389,10 @@ def resource_map(release=None):
         )
         resource_map[NEUTRON_DEFAULT]['contexts'] = \
             [neutron_api_context.NeutronApiSDNConfigFileContext()]
+    if enable_memcache(release=release):
+        resource_map[MEMCACHED_CONF] = {
+            'contexts': [context.MemcacheContext()],
+            'services': ['memcached']}
     return resource_map
 
 

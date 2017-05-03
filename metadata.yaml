@@ -21,7 +21,6 @@ extra-bindings:
 series:
   - xenial
   - trusty
-  - precise
   - yakkety
 provides:
   nrpe-external-master:

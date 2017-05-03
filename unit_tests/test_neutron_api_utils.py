@@ -640,7 +640,7 @@ class TestNeutronAPIUtils(CharmTestCase):
     def test_calico_source_liberty(self):
         self.get_os_codename_install_source.return_value = 'liberty'
         nutils.additional_install_locations('Calico', '')
-        self.add_source.assert_called_with('ppa:project-calico/stable')
+        self.add_source.assert_called_with('ppa:project-calico/calico-1.4')
 
     @patch('shutil.rmtree')
     def test_force_etcd_restart(self, rmtree):

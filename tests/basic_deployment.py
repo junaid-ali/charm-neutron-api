@@ -104,6 +104,8 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
             'glance:amqp': 'rabbitmq-server:amqp',
             'nova-compute:image-service': 'glance:image-service',
             'nova-cloud-controller:image-service': 'glance:image-service',
+            'nova-cloud-controller:quantum-network-service':
+            'neutron-gateway:quantum-network-service',
         }
 
         # NOTE(beisner): relate this separately due to the resulting
@@ -226,7 +228,7 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
                                 'neutron-metadata-agent',
                                 'neutron-plugin-openvswitch-agent']
 
-        if self._get_openstack_release() <= self.trusty_juno:
+        if self._get_openstack_release() <= self.trusty_icehouse:
             neutron_services.append('neutron-vpn-agent')
 
         if self._get_openstack_release() < self.trusty_kilo:
@@ -250,6 +252,12 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
         ret = u.validate_services_by_name(services)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
+
+    def test_110_memcache(self):
+        u.validate_memcache(self.neutron_api_sentry,
+                            '/etc/neutron/neutron.conf',
+                            self._get_openstack_release(),
+                            earliest_release=self.trusty_mitaka)
 
     def test_200_neutron_api_shared_db_relation(self):
         """Verify the neutron-api to mysql shared-db relation data"""
@@ -602,8 +610,7 @@ class NeutronAPIBasicDeployment(OpenStackAmuletDeployment):
             }
         }
 
-        if (self._get_openstack_release() in
-           [self.trusty_liberty, self.wily_liberty]):
+        if self._get_openstack_release() == self.trusty_liberty:
             # Liberty
             expected['ml2'].update({
                 'mechanism_drivers': 'openvswitch,l2population'

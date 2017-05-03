@@ -551,17 +551,6 @@ def fstab_mount(mountpoint):
     return True
 
 
-def data_hash(data, hash_type='md5'):
-    """Generate a hash checksum of 'data'.
-
-    :param str hash_type: Any hash alrgorithm supported by :mod:`hashlib`,
-                          such as md5, sha1, sha256, sha512, etc.
-    """
-    h = getattr(hashlib, hash_type)()
-    h.update(data)
-    return h.hexdigest()
-
-
 def file_hash(path, hash_type='md5'):
     """Generate a hash checksum of the contents of 'path' or None if not found.
 
