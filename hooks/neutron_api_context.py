@@ -184,6 +184,8 @@ class NeutronCCContext(context.NeutronContext):
                     ','.join(config('nsx-controllers').split())
                 ctxt['nsx_controllers_list'] = \
                     config('nsx-controllers').split()
+        if config('neutron-plugin') == 'Calico' and config('enable-core-plugin'):
+            ctxt['core_plugin'] = 'calico'
         if config('neutron-plugin') == 'plumgrid':
             ctxt['pg_username'] = config('plumgrid-username')
             ctxt['pg_password'] = config('plumgrid-password')

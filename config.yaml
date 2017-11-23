@@ -626,3 +626,9 @@ options:
       http://bugs.launchpad.net/charms providing an explanation of why the
       config was needed so that we may consider it for inclusion as a
       natively supported config in the the charm.
+  enable-core-plugin:
+    default: False
+    type: boolean
+    description: |
+      When neutron-plugin is set to 'calico' and this configuration is
+      enabled, the charm will configure Calico as core plugin.
